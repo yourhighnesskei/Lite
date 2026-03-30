@@ -1,4 +1,6 @@
-local crosshair = {
+local Drawing = loadstring(game:HttpGet('https://raw.githubusercontent.com/yourhighnesskei/Lite/refs/heads/main/Deps/Drawing.lua'))()
+
+getgenv().crosshair = {
 
     enabled = true,
     refreshrate = 0.015,
