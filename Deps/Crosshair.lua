@@ -34,8 +34,8 @@ local last_render = 0
 local drawings = {
     crosshair = {},
     text = {
-        Drawing.new('Text', {Size = 13, Font = 2, Outline = true, Center = true, Text = 'Alwayswin', Color = Color3.new(1,1,1)}),
-        Drawing.new('Text', {Size = 13, Font = 2, Outline = true, Center = true, Text = '.lite'}),
+        Drawing.new('Text', {Size = 14, Font = 2, Outline = true, Center = true, Text = 'Alwayswin', Color = Color3.new(1,1,1)}),
+        Drawing.new('Text', {Size = 14, Font = 2, Outline = true, Center = true, Text = '.lite'}),
     }
 }
 
