@@ -1,4 +1,4 @@
-local Drawing = loadstring(game:HttpGet('https://raw.githubusercontent.com/yourhighnesskei/Alwayswin/refs/heads/main/Deps/Drawing.lua'))()
+local Drawing = loadstring(game:HttpGet('https://raw.githubusercontent.com/yourhighnesskei/Lite/refs/heads/main/Deps/Drawing.lua'))()
 
 getgenv().crosshair = {
 
