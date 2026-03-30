@@ -1,6 +1,6 @@
-local Drawing = loadstring(game:HttpGet('https://raw.githubusercontent.com/yourhighnesskei/Lite/refs/heads/main/Deps/Drawing.lua'))()
+local Drawing = loadstring(game:HttpGet('https://raw.githubusercontent.com/yourhighnesskei/Alwayswin/refs/heads/main/Deps/Drawing.lua'))()
 
-local crosshair = {
+getgenv().crosshair = {
 
     enabled = true,
     refreshrate = 0.015,
@@ -34,8 +34,8 @@ local last_render = 0
 local drawings = {
     crosshair = {},
     text = {
-        Drawing.new('Text', {Size = 13, Font = 2, Outline = true, Text = 'Alwayswin', Color = Color3.new(1,1,1)}),
-        Drawing.new('Text', {Size = 13, Font = 2, Outline = true, Text = '.lite'}),
+        Drawing.new('Text', {Size = 13, Font = 2, Outline = true, Center = true, Text = 'Alwayswin', Color = Color3.new(1,1,1)}),
+        Drawing.new('Text', {Size = 13, Font = 2, Outline = true, Center = true, Text = '.lite'}),
     }
 }
 
@@ -74,8 +74,8 @@ runservice.PostSimulation:Connect(function()
 
             local text_x = text_1.TextBounds.X + text_2.TextBounds.X
 
-            text_1.Position = position + Vector2.new(-text_x / 2, crosshair.radius + (crosshair.resize and crosshair.resize_max or crosshair.length) + 15)
-            text_2.Position = text_1.Position + Vector2.new(text_1.TextBounds.X)
+            text_1.Position = position + Vector2.new(0, crosshair.radius + (crosshair.resize and crosshair.resize_max or crosshair.length) + 15)
+            text_2.Position = position + Vector2.new(0, crosshair.radius + (crosshair.resize and crosshair.resize_max or crosshair.length) + 30)
             text_2.Color = crosshair.color
             
             for idx = 1, 4 do
@@ -114,5 +114,3 @@ runservice.PostSimulation:Connect(function()
         end
     end
 end)
-
-return crosshair
