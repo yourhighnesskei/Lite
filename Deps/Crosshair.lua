@@ -16,7 +16,7 @@ local crosshair = {
     resize = true,
     resize_speed = 150,
     resize_min = 5,
-    resize_max = 22,
+    resize_max = 11,
 }
 
 local runservice = game:GetService('RunService')
