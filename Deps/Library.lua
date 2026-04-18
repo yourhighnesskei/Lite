@@ -1,4 +1,4 @@
---// NYULA IS ASSSSS, Anyways creds to endless solutions 
+-- // NYULA IS ASSSSS, Anyways creds to endless solutions 
 
 local Settings = {
     Accent = Color3.fromHex("#0000FF"),
@@ -16,7 +16,128 @@ local Settings = {
 local Menu = {}
 local Tabs = {}
 local Items = {}
-local EventObjects = {} -- For updating items on menu property change
+
+local Flags = {}
+local UnNamedFlags = 0
+Menu.Flags = Flags
+
+local function NextFlag()
+    UnNamedFlags += 1
+    return string.format("%.14g", UnNamedFlags)
+end
+Menu.NextFlag = NextFlag
+
+function Menu:GetConfig()
+    local Config = ""
+    for Index, Value in pairs(Flags) do
+        if typeof(Value) == "function" then continue end
+        if #Index < 4 or Index:sub(-4) ~= "_val" then continue end
+
+        local FlagName = Index:sub(1, #Index - 4)
+
+        if FlagName == "ConfigConfig_List" or FlagName == "ConfigConfig_Load"
+            or FlagName == "ConfigConfig_Save" or FlagName == "ConfigConfig_Name" then
+            continue
+        end
+
+        -- skip if value is somehow a function (the bug)
+        if typeof(Value) == "function" then continue end
+
+        local Final = ""
+        local Value2 = Value
+
+        if typeof(Value2) == "Color3" then
+            local h, s, v = Value2:ToHSV()
+            Final = ("rgb(%s,%s,%s,1)"):format(h, s, v)
+        elseif typeof(Value2) == "table" and Value2.Color and Value2.Transparency ~= nil then
+            local h, s, v = Value2.Color:ToHSV()
+            Final = ("rgb(%s,%s,%s,%s)"):format(h, s, v, Value2.Transparency)
+        elseif typeof(Value2) == "EnumItem" then
+            Final = ("enum(%s)"):format(tostring(Value2))
+        elseif typeof(Value2) == "boolean" then
+            Final = ("bool(%s)"):format(tostring(Value2))
+        elseif typeof(Value2) == "table" then
+            local New = "table("
+            for _, v3 in pairs(Value2) do
+                New = New .. tostring(v3) .. ","
+            end
+            if New:sub(#New) == "," then New = New:sub(1, #New - 1) end
+            Final = New .. ")"
+        elseif typeof(Value2) == "string" then
+            -- prevent serializing function tostring like "function: 0x..."
+            if Value2:sub(1, 9) == "function:" then continue end
+            Final = ("string(%s)"):format(Value2)
+        elseif typeof(Value2) == "number" then
+            Final = ("number(%s)"):format(Value2)
+        elseif Value2 ~= nil then
+            local str = tostring(Value2)
+            if str:sub(1, 9) == "function:" then continue end
+            Final = str
+        end
+
+        if Final ~= "" then
+            Config = Config .. FlagName .. ": " .. Final .. "\n"
+        end
+    end
+    return Config
+end
+
+function Menu:LoadConfig(Config)
+    for _ = 1, 10 do
+        local Lines = string.split(Config, "\n")
+        local Parsed = {}
+
+        for _, Line in ipairs(Lines) do
+            local Parts = string.split(Line, ": ")
+            if #Parts >= 2 then
+                local Key = Parts[1]
+                local Raw = Line:sub(#Key + 3)
+
+                local Value
+                if Raw:sub(1, 3) == "rgb" then
+                    local Inner = Raw:sub(5, #Raw - 1)
+                    local T = string.split(Inner, ",")
+                    local h, s, v, a = tonumber(T[1]), tonumber(T[2]), tonumber(T[3]), tonumber(T[4])
+                    Value = { Color = Color3.fromHSV(h or 0, s or 0, v or 0), Transparency = a or 1 }
+                elseif Raw:sub(1, 4) == "enum" then
+                    local inner = Raw:sub(6, #Raw - 1)
+                    pcall(function()
+                        local parts = string.split(inner, ".")
+                        if #parts == 3 then
+                            Value = Enum[parts[2]][parts[3]]
+                        end
+                    end)
+                elseif Raw:sub(1, 4) == "bool" then
+                    Value = Raw:sub(6, #Raw - 1) == "true"
+                elseif Raw:sub(1, 5) == "table" then
+                    Value = string.split(Raw:sub(7, #Raw - 1), ",")
+                elseif Raw:sub(1, 6) == "string" then
+                    Value = Raw:sub(8, #Raw - 1)
+                elseif Raw:sub(1, 6) == "number" then
+                    Value = tonumber(Raw:sub(8, #Raw - 1))
+                else
+                    Value = Raw
+                end
+
+                if Key ~= "ConfigConfig_List" then
+                    Parsed[Key] = Value
+                end
+            end
+        end
+
+        for k, v in pairs(Parsed) do
+            if Flags[k] then
+                if typeof(Flags[k]) == "function" then
+                    Flags[k](v)
+                elseif typeof(Flags[k]) == "table" and Flags[k].Set then
+                    Flags[k]:Set(v)
+                end
+            end
+        end
+    end
+end
+
+local EventObjects = {}
 local Notifications = {}
 
 local Scaling = {True = false, Origin = nil, Size = nil}
@@ -174,10 +295,6 @@ end
 
 
 local function SetDraggable(self: GuiObject)
-
-
---
-
     table.insert(Draggables, self)
     local DragOrigin
     local GuiOrigin
@@ -783,7 +900,7 @@ function Menu.Button(Tab_Name: string, Container_Name: string, Name: string, Cal
 end
 
 
-function Menu.TextBox(Tab_Name: string, Container_Name: string, Name: string, Value: string, Callback: any, ToolTip: string): TextBox
+function Menu.TextBox(Tab_Name: string, Container_Name: string, Name: string, Value: string, Flag: string, Callback: any, ToolTip: string): TextBox
     local Container = GetContainer(Tab_Name, Container_Name)
     local Label = CreateLabel(Container.self, "TextBox", Name, nil, UDim2.fromOffset(20, Container:GetHeight()))
     local GuiTextBox = Instance.new("TextBox")
@@ -796,6 +913,11 @@ function Menu.TextBox(Tab_Name: string, Container_Name: string, Name: string, Va
     TextBox.Index = #Items + 1
     TextBox.Value = typeof(Value) == "string" and Value or ""
     TextBox.Callback = typeof(Callback) == "function" and Callback or function() end
+
+    local _flag = (typeof(Flag) == "string" and Flag ~= "") and Flag or NextFlag()
+    TextBox.Flag = _flag
+    Flags[_flag .. "_val"] = TextBox.Value
+    Flags[_flag] = function(v) TextBox:SetValue(v) end
 
 
     function TextBox:SetLabel(Name: string)
@@ -817,6 +939,7 @@ function Menu.TextBox(Tab_Name: string, Container_Name: string, Name: string, Va
     function TextBox:SetValue(Value: string)
         self.Value = tostring(Value)
         GuiTextBox.Text = self.Value
+        Flags[_flag .. "_val"] = self.Value
     end
 
 
@@ -840,6 +963,7 @@ function Menu.TextBox(Tab_Name: string, Container_Name: string, Name: string, Va
     end)
     GuiTextBox.FocusLost:Connect(function()
         TextBox.Value = GuiTextBox.Text
+        Flags[_flag .. "_val"] = TextBox.Value
         TextBox.Callback(GuiTextBox.Text)
     end)
     GuiTextBox.MouseEnter:Connect(function()
@@ -859,7 +983,7 @@ function Menu.TextBox(Tab_Name: string, Container_Name: string, Name: string, Va
 end
 
 
-function Menu.CheckBox(Tab_Name: string, Container_Name: string, Name: string, Boolean: boolean, Callback: any, ToolTip: string): CheckBox
+function Menu.CheckBox(Tab_Name: string, Container_Name: string, Name: string, Boolean: boolean, Flag: string, Callback: any, ToolTip: string): CheckBox
     local Container = GetContainer(Tab_Name, Container_Name)
     local Label = CreateLabel(Container.self, "CheckBox", Name, nil, UDim2.fromOffset(20, Container:GetHeight()))
     local Button = Instance.new("TextButton")
@@ -873,9 +997,15 @@ function Menu.CheckBox(Tab_Name: string, Container_Name: string, Name: string, B
     CheckBox.Value = typeof(Boolean) == "boolean" and Boolean or false
     CheckBox.Callback = typeof(Callback) == "function" and Callback or function() end
 
+    local _flag = (typeof(Flag) == "string" and Flag ~= "") and Flag or NextFlag()
+    CheckBox.Flag = _flag
+    Flags[_flag .. "_val"] = CheckBox.Value
+    Flags[_flag] = function(v) CheckBox:SetValue(v) end
+
 
     function CheckBox:Update(Value: boolean)
         self.Value = typeof(Value) == "boolean" and Value
+        Flags[_flag .. "_val"] = self.Value
         Button.BackgroundColor3 = self.Value and Menu.Accent or Menu.ItemColor
     end
 
@@ -932,7 +1062,7 @@ function Menu.CheckBox(Tab_Name: string, Container_Name: string, Name: string, B
 end
 
 
-function Menu.Hotkey(Tab_Name: string, Container_Name: string, Name: string, Key:EnumItem, Callback: any, ToolTip: string): Hotkey
+function Menu.Hotkey(Tab_Name: string, Container_Name: string, Name: string, Key:EnumItem, Flag: string, Callback: any, ToolTip: string): Hotkey
     local Container = GetContainer(Tab_Name, Container_Name)
     local Label = CreateLabel(Container.self, "Hotkey", Name, nil, UDim2.fromOffset(20, Container:GetHeight()))
     local Button = Instance.new("TextButton")
@@ -951,13 +1081,25 @@ function Menu.Hotkey(Tab_Name: string, Container_Name: string, Name: string, Key
     Hotkey.Editing = false
     Hotkey.Mode = "Toggle"
 
+    local _flag = (typeof(Flag) == "string" and Flag ~= "") and Flag or NextFlag()
+    Hotkey.Flag = _flag
+    Flags[_flag .. "_val"] = Hotkey.Key
+    Flags[_flag .. "_MODE_val"] = Hotkey.Mode
+    Flags[_flag] = function(v) Hotkey:SetValue(v, Hotkey.Mode) end
+
 
     function Hotkey:Update(Input: EnumItem, Mode: string)
-        Button.Text = Input and string.format("[%s]", Input.Name) or "[None]"
-
+        if Input then
+            local name = (typeof(Input) == "EnumItem") and Input.Name or tostring(Input)
+            Button.Text = "[" .. name .. "]"
+        else
+            Button.Text = "[None]"
+        end
         self.Key = Input
         self.Mode = Mode or "Toggle"
         self.Editing = false
+        Flags[_flag .. "_val"] = self.Key
+        Flags[_flag .. "_MODE_val"] = self.Mode
     end
 
     function Hotkey:SetLabel(Name: string)
@@ -1096,7 +1238,7 @@ function Menu.Hotkey(Tab_Name: string, Container_Name: string, Name: string, Key
 end
 
 
-function Menu.Slider(Tab_Name: string, Container_Name: string, Name: string, Min: number, Max: number, Value: number, Unit: string, Scale: number, Callback: any, ToolTip: string): Slider
+function Menu.Slider(Tab_Name: string, Container_Name: string, Name: string, Min: number, Max: number, Value: number, Unit: string, Scale: number, Flag: string, Callback: any, ToolTip: string): Slider
     local Container = GetContainer(Tab_Name, Container_Name)
     local Label = CreateLabel(Container.self, "Slider", Name, UDim2.new(1, -10, 0, 15), UDim2.fromOffset(20, Container:GetHeight()))
     local Button = Instance.new("TextButton")
@@ -1117,12 +1259,18 @@ function Menu.Slider(Tab_Name: string, Container_Name: string, Name: string, Min
     Slider.Scale = typeof(Scale) == "number" and Scale or 0
     Slider.Callback = typeof(Callback) == "function" and Callback or function() end
 
+    local _flag = (typeof(Flag) == "string" and Flag ~= "") and Flag or NextFlag()
+    Slider.Flag = _flag
+    Flags[_flag .. "_val"] = Slider.Value
+    Flags[_flag] = function(v) Slider:SetValue(v) end
+
 
     local function UpdateSlider(Percentage: number)
         local Percentage = typeof(Percentage == "number") and math.clamp(Percentage, 0, 1) or 0
         local Value = Slider.Min + ((Slider.Max - Slider.Min) * Percentage)
         local Scale = (10 ^ Slider.Scale)
         Slider.Value = math.round(Value * Scale) / Scale
+        Flags[_flag .. "_val"] = Slider.Value
 
         ValueBar.Size = UDim2.new(Percentage, 0, 0, 5)
         ValueBox.Text = "[" .. Slider.Value .. "]"
@@ -1246,7 +1394,7 @@ function Menu.Slider(Tab_Name: string, Container_Name: string, Name: string, Min
 end
 
 
-function Menu.ColorPicker(Tab_Name: string, Container_Name: string, Name: string, Color: Color3, Alpha: number, Callback: any, ToolTip: string): ColorPicker
+function Menu.ColorPicker(Tab_Name: string, Container_Name: string, Name: string, Color: Color3, Alpha: number, Flag: string, Callback: any, ToolTip: string): ColorPicker
     local Container = GetContainer(Tab_Name, Container_Name)
     local Label = CreateLabel(Container.self, "ColorPicker", Name, UDim2.new(1, -10, 0, 15), UDim2.fromOffset(20, Container:GetHeight()))
     local Button = Instance.new("TextButton")
@@ -1269,10 +1417,21 @@ function Menu.ColorPicker(Tab_Name: string, Container_Name: string, Name: string
     ColorPicker.Container = Container_Name
     ColorPicker.Index = #Items + 1
     ColorPicker.Color = typeof(Color) == "Color3" and Color or Color3.new(1, 1, 1)
-    ColorPicker.Saturation = {0, 0} -- no i'm not going to use ColorPicker.Value that would confuse people with ColorPicker.Color
+    ColorPicker.Saturation = {0, 0}
     ColorPicker.Alpha = typeof(Alpha) == "number" and Alpha or 0
     ColorPicker.Hue = 0
     ColorPicker.Callback = typeof(Callback) == "function" and Callback or function() end
+
+    local _flag = (typeof(Flag) == "string" and Flag ~= "") and Flag or NextFlag()
+    ColorPicker.Flag = _flag
+    Flags[_flag .. "_val"] = { Color = ColorPicker.Color, Transparency = ColorPicker.Alpha }
+    Flags[_flag] = function(v)
+        if typeof(v) == "table" and v.Color then
+            ColorPicker:SetValue(v.Color, v.Transparency)
+        elseif typeof(v) == "Color3" then
+            ColorPicker:SetValue(v, ColorPicker.Alpha)
+        end
+    end
 
 
     local function UpdateColor()
@@ -1287,6 +1446,7 @@ function Menu.ColorPicker(Tab_Name: string, Container_Name: string, Name: string
         AlphaCursor.Position = UDim2.fromScale(0, math.clamp(ColorPicker.Alpha, 0, 0.98))
         HueCursor.Position = UDim2.fromScale(0, math.clamp(ColorPicker.Hue, 0, 0.98))
 
+        Flags[_flag .. "_val"] = { Color = ColorPicker.Color, Transparency = ColorPicker.Alpha }
         ColorPicker.Callback(ColorPicker.Color, ColorPicker.Alpha)
     end
 
@@ -1530,7 +1690,7 @@ function Menu.ColorPicker(Tab_Name: string, Container_Name: string, Name: string
 end
 
 
-function Menu.ComboBox(Tab_Name: string, Container_Name: string, Name: string, Value: string, Value_Items: table, Callback: any, ToolTip: string): ComboBox
+function Menu.ComboBox(Tab_Name: string, Container_Name: string, Name: string, Value: string, Value_Items: table, Flag: string, Callback: any, ToolTip: string): ComboBox
     local Container = GetContainer(Tab_Name, Container_Name)
     local Label = CreateLabel(Container.self, "ComboBox", Name, UDim2.new(1, -10, 0, 15), UDim2.fromOffset(20, Container:GetHeight()))
     local Button = Instance.new("TextButton")
@@ -1548,9 +1708,15 @@ function Menu.ComboBox(Tab_Name: string, Container_Name: string, Name: string, V
     ComboBox.Value = typeof(Value) == "string" and Value or ""
     ComboBox.Items = typeof(Value_Items) == "table" and Value_Items or {}
 
+    local _flag = (typeof(Flag) == "string" and Flag ~= "") and Flag or NextFlag()
+    ComboBox.Flag = _flag
+    Flags[_flag .. "_val"] = ComboBox.Value
+    Flags[_flag] = function(v) ComboBox:SetValue(v) end
+
     local function UpdateValue(Value: string)
         ComboBox.Value = tostring(Value)
         Button.Text = ComboBox.Value or "[...]"
+        Flags[_flag .. "_val"] = ComboBox.Value
     end
 
     local ItemObjects = {}
@@ -1705,7 +1871,7 @@ function Menu.ComboBox(Tab_Name: string, Container_Name: string, Name: string, V
 end
 
 
-function Menu.MultiSelect(Tab_Name: string, Container_Name: string, Name: string, Value_Items: table, Callback: any, ToolTip: string): MultiSelect
+function Menu.MultiSelect(Tab_Name: string, Container_Name: string, Name: string, Value_Items: table, Flag: string, Callback: any, ToolTip: string): MultiSelect
     local Container = GetContainer(Tab_Name, Container_Name)
     local Label = CreateLabel(Container.self, "MultiSelect", Name, UDim2.new(1, -10, 0, 15), UDim2.fromOffset(20, Container:GetHeight()))
     local Button = Instance.new("TextButton")
@@ -1723,6 +1889,11 @@ function Menu.MultiSelect(Tab_Name: string, Container_Name: string, Name: string
     MultiSelect.Items = typeof(Value_Items) == "table" and Value_Items or {}
     MultiSelect.Value = {}
 
+    local _flag = (typeof(Flag) == "string" and Flag ~= "") and Flag or NextFlag()
+    MultiSelect.Flag = _flag
+    Flags[_flag .. "_val"] = MultiSelect.Value
+    Flags[_flag] = function(v) MultiSelect:SetValue(v) end
+
 
     local function GetSelectedItems(): table
         local Selected = {}
@@ -1734,6 +1905,7 @@ function Menu.MultiSelect(Tab_Name: string, Container_Name: string, Name: string
 
     local function UpdateValue()
         MultiSelect.Value = GetSelectedItems()
+        Flags[_flag .. "_val"] = MultiSelect.Value
         Button.Text = #MultiSelect.Value > 0 and table.concat(MultiSelect.Value, ", ") or "[...]"
     end
 
@@ -1878,12 +2050,12 @@ function Menu.MultiSelect(Tab_Name: string, Container_Name: string, Name: string
 end
 
 
-function Menu.ListBox(Tab_Name: string, Container_Name: string, Name: string, Multi: boolean, Value_Items: table, Callback: any, ToolTip: string): ListBox
+function Menu.ListBox(Tab_Name: string, Container_Name: string, Name: string, Multi: boolean, Value_Items: table, Flag: string, Callback: any, ToolTip: string): ListBox
     local Container = GetContainer(Tab_Name, Container_Name)
     local List = Instance.new("ScrollingFrame")
     local ListLayout = Instance.new("UIListLayout")
 
-    local ListBox = {self = Label}
+    local ListBox = {self = List}
     ListBox.Name = Name
     ListBox.Class = "ListBox"
     ListBox.Tab = Tab_Name
@@ -1893,6 +2065,11 @@ function Menu.ListBox(Tab_Name: string, Container_Name: string, Name: string, Mu
     ListBox.Items = typeof(Value_Items) == "table" and Value_Items or {}
     ListBox.Value = {}
     ListBox.Callback = typeof(Callback) == "function" and Callback or function() end
+
+    local _flag = (typeof(Flag) == "string" and Flag ~= "") and Flag or NextFlag()
+    ListBox.Flag = _flag
+    Flags[_flag .. "_val"] = ListBox.Value
+    Flags[_flag] = function(v) ListBox:SetValue(v) end
 
     local ItemObjects = {}
 
@@ -1910,6 +2087,7 @@ function Menu.ListBox(Tab_Name: string, Container_Name: string, Name: string, Mu
         else
             ListBox.Value = GetSelectedItems()
         end
+        Flags[_flag .. "_val"] = ListBox.Value
     end
 
     local function AddItem(Name: string, Checked: boolean)
